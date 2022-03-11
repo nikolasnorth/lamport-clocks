@@ -1,6 +1,12 @@
+// Uses Lamport's logical clocks to implement a totally-ordered multicast of bank account transactions under the
+// following assumptions:
+// 		1. No messages are lost
+// 		2. Messages from the same sender are received in the same order as they were sent.
+
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/consul/api"
@@ -35,6 +41,18 @@ type Node struct {
 
 type BankServer struct {
 	bank.UnimplementedBankServer
+}
+
+func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Response, error) {
+	return &bank.Response{}, nil
+}
+
+func (b *BankServer) Withdraw(ctx context.Context, req *bank.Request) (*bank.Response, error) {
+	return &bank.Response{}, nil
+}
+
+func (b *BankServer) AddInterest(ctx context.Context, req *bank.Request) (*bank.Response, error) {
+	return &bank.Response{}, nil
 }
 
 // Start gRPC server
@@ -99,7 +117,7 @@ func (n *Node) greetAll() {
 			continue
 		}
 		if n.Clients[pair.Key] == nil {
-			fmt.Println("New member: ", pair.Key)
+			fmt.Println("new member: ", pair.Key)
 			n.setupClient(pair.Key, string(pair.Value))
 		}
 	}
@@ -107,7 +125,7 @@ func (n *Node) greetAll() {
 
 func (n *Node) start() {
 	go n.listen()
-	fmt.Println("Listening on", n.Addr, "...")
+	fmt.Println("listening on", n.Addr, "...")
 
 	n.registerService()
 
@@ -120,8 +138,9 @@ func (n *Node) start() {
 func main() {
 	args := os.Args[1:]
 	if len(args) != 3 {
-		log.Fatalln("Arguments required: [port number] [filename] [node name]")
+		log.Fatalln("Arguments required: [node name] [:port number] localhost:8500 [operations filename]")
 	}
+
 	name := args[0]
 	port := args[1]
 	addr := "localhost" + port

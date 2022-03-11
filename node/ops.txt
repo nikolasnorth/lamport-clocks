@@ -1,0 +1,4 @@
+deposit 11111 100
+withdraw 21111 500.20
+interest 21111 5
+done
