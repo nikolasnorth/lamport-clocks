@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# GoLand
+.idea/
+
+# Build
+bin/
