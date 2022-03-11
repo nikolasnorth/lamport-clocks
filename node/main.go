@@ -52,6 +52,8 @@ func (n *Node) listen() {
 	if err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
+
+	fmt.Println("Listening on", n.Addr, "...")
 }
 
 // Register this node with the service discovery module.
@@ -107,7 +109,6 @@ func (n *Node) greetAll() {
 
 func (n *Node) start() {
 	go n.listen()
-	fmt.Println("Listening on", n.Addr, "...")
 
 	n.registerService()
 
