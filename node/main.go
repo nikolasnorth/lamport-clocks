@@ -110,8 +110,8 @@ func (n *Node) greetAll() {
 		log.Fatalf("failed to retrieve list of all nodes: %v", err)
 	}
 
+	fmt.Println("KV Pairs:", kvPairs)
 	for _, pair := range kvPairs {
-		fmt.Println("Here")
 		if pair.Key == n.Name {
 			continue
 		}
