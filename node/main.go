@@ -102,8 +102,6 @@ func (n *Node) setupClient(name, addr string) {
 	defer connection.Close()
 
 	n.Clients[name] = bank.NewBankClient(connection)
-
-	// TODO: Perform RPC call
 }
 
 func (n *Node) greetAll() {
@@ -113,6 +111,7 @@ func (n *Node) greetAll() {
 	}
 
 	for _, pair := range kvPairs {
+		fmt.Println("Here")
 		if pair.Key == n.Name {
 			continue
 		}
@@ -151,6 +150,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open file: %v", err)
 	}
+	defer accountsFile.Close()
 
 	bytes, err := io.ReadAll(accountsFile)
 	if err != nil {
