@@ -91,7 +91,7 @@ func (n *Node) registerService() {
 	}
 
 	n.SDKV = *kv
-	log.Println("Successfully registered with service discovery.")
+	log.Println("successfully registered with service discovery.")
 }
 
 func (n *Node) setupClient(name, addr string) {
@@ -105,7 +105,7 @@ func (n *Node) setupClient(name, addr string) {
 }
 
 func (n *Node) greetAll() {
-	kvPairs, _, err := n.SDKV.List("nnorth2", nil)
+	kvPairs, _, err := n.SDKV.List("nnorth2 ", nil)
 	if err != nil {
 		log.Fatalf("failed to retrieve list of all nodes: %v", err)
 	}
@@ -130,7 +130,6 @@ func (n *Node) start() {
 
 	for {
 		time.Sleep(20 * time.Second)
-		fmt.Println("Calling greetAll()...")
 		n.greetAll()
 	}
 }
