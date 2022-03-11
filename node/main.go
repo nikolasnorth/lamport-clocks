@@ -1,7 +1,7 @@
 // Uses Lamport's logical clocks to implement a totally-ordered multicast of bank account transactions under the
 // following assumptions:
-// 		1. No messages are lost
-// 		2. Messages from the same sender are received in the same order as they were sent.
+// 1. No messages are lost
+// 2. Messages from the same sender are received in the same order as they were sent.
 
 package main
 
@@ -131,6 +131,7 @@ func (n *Node) start() {
 
 	for {
 		time.Sleep(20 * time.Second)
+		fmt.Println("Calling greetAll()...")
 		n.greetAll()
 	}
 }
