@@ -118,6 +118,7 @@ func (n *Node) start() {
 }
 
 func main() {
+	fmt.Println("Hi")
 	args := os.Args[1:]
 	if len(args) != 3 {
 		log.Fatalln("Arguments required: [port number] [filename] [node name]")
