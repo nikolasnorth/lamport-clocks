@@ -8,13 +8,11 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/consul/api"
 	bank "github.com/nikolasnorth/lamport-clocks/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -124,73 +122,79 @@ func (q *MessageQueue) Pop() (Operation, bool) {
 }
 
 func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Response, error) {
-	op := Operation{Name: deposit, Amount: req.Amount}
-	t := clock.Tick(req.Timestamp)
-	queue.Push(op, t)
+	op := Operation{Name: deposit, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
+	t := clock.Tick(req.GetTimestamp())
+	//queue.Push(op, t)
+	fmt.Println("received deposit request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
 	return &bank.Response{}, nil
 }
 
 func (b *BankServer) Withdraw(ctx context.Context, req *bank.Request) (*bank.Response, error) {
-	op := Operation{Name: withdraw, Amount: req.Amount}
-	t := clock.Tick(req.Timestamp)
-	queue.Push(op, t)
+	op := Operation{Name: withdraw, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
+	t := clock.Tick(req.GetTimestamp())
+	//queue.Push(op, t)
+	fmt.Println("received withdraw request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
 	return &bank.Response{}, nil
 }
 
 func (b *BankServer) AddInterest(ctx context.Context, req *bank.Request) (*bank.Response, error) {
-	op := Operation{Name: interest, Amount: req.Amount}
-	t := clock.Tick(req.Timestamp)
-	queue.Push(op, t)
+	op := Operation{Name: interest, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
+	t := clock.Tick(req.GetTimestamp())
+	//queue.Push(op, t)
+	fmt.Println("received withdraw request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
 	return &bank.Response{}, nil
 }
 
 func (b *BankServer) Done(ctx context.Context, req *bank.DoneRequest) (*bank.Response, error) {
-	// Process initial account balances
-	accountsFile, err := os.Open(accountsFilename)
-	if err != nil {
-		log.Fatalf("failed to open file: %v", err)
-	}
-	defer accountsFile.Close()
+	//op := Operation{Name: done, Amount: -1, AccountNumber: -1}
+	t := clock.Tick(req.GetTimestamp())
 
-	bytes, err := io.ReadAll(accountsFile)
-	if err != nil {
-		log.Fatalf("failed to read from file: %v", err)
-	}
+	fmt.Println("received done request, t =", t)
+	//// Process initial account balances
+	//accountsFile, err := os.Open(accountsFilename)
+	//if err != nil {
+	//	log.Fatalf("failed to open file: %v", err)
+	//}
+	//defer accountsFile.Close()
+	//
+	//bytes, err := io.ReadAll(accountsFile)
+	//if err != nil {
+	//	log.Fatalf("failed to read from file: %v", err)
+	//}
+	//
+	//accounts := make([]Account, 0)
+	//err = json.Unmarshal(bytes, &accounts)
+	//if err != nil {
+	//	log.Fatalf("failed to unmarshal data into slice of accounts: %v", err)
+	//}
+	//
+	//op, isEmpty := queue.Pop()
+	//for !isEmpty {
+	//	switch op.Name {
+	//	case deposit:
+	//		for _, account := range accounts {
+	//			if *account.AccountID == op.AccountNumber {
+	//				*account.Balance += op.Amount
+	//			}
+	//		}
+	//	case withdraw:
+	//		for _, account := range accounts {
+	//			if *account.AccountID == op.AccountNumber {
+	//				*account.Balance -= op.Amount
+	//			}
+	//		}
+	//	case interest:
+	//		for _, account := range accounts {
+	//			if *account.AccountID == op.AccountNumber {
+	//				*account.Balance += *account.Balance * (op.Amount / 100)
+	//			}
+	//		}
+	//	default:
+	//		log.Fatalf("invalid operation: %s\n", op.Name)
+	//	}
+	//	op, isEmpty = queue.Pop()
+	//}
 
-	accounts := make([]Account, 0)
-	err = json.Unmarshal(bytes, &accounts)
-	if err != nil {
-		log.Fatalf("failed to unmarshal data into slice of accounts: %v", err)
-	}
-
-	op, isEmpty := queue.Pop()
-	for !isEmpty {
-		switch op.Name {
-		case deposit:
-			for _, account := range accounts {
-				if *account.AccountID == op.AccountNumber {
-					*account.Balance += op.Amount
-				}
-			}
-		case withdraw:
-			for _, account := range accounts {
-				if *account.AccountID == op.AccountNumber {
-					*account.Balance -= op.Amount
-				}
-			}
-		case interest:
-			for _, account := range accounts {
-				if *account.AccountID == op.AccountNumber {
-					*account.Balance += *account.Balance * (op.Amount / 100)
-				}
-			}
-		default:
-			log.Fatalf("invalid operation: %s\n", op.Name)
-		}
-		op, isEmpty = queue.Pop()
-	}
-
-	// Write output file
 	return &bank.Response{}, nil
 }
 
@@ -206,7 +210,7 @@ func (n *Node) sendRequestToNode(name, operation string) {
 
 		_, err := n.Clients[name].Done(ctx, req)
 		if err != nil {
-			log.Fatalf("failed to send done request: %v", err)
+			log.Fatalf("failed to send request: %v", err)
 		}
 	}
 	if len(splitOperation) != 3 {
@@ -225,24 +229,28 @@ func (n *Node) sendRequestToNode(name, operation string) {
 	}
 
 	// Send gRPC request to Node with given `name`
-	req := &bank.Request{AccountNumber: accountNumber, Amount: float32(amount), Timestamp: clock.LatestTime}
-	op := Operation{Name: opName, Amount: float32(amount)}
+	t := clock.Tick(-1)
+	op := Operation{Name: opName, Amount: float32(amount), AccountNumber: accountNumber}
+	req := &bank.Request{AccountNumber: accountNumber, Amount: float32(amount), Timestamp: t}
 	switch op.Name {
 	case deposit:
 		_, err := n.Clients[name].Deposit(ctx, req)
 		if err != nil {
 			log.Fatalf("failed to request deposit: %v", err)
 		}
+		//queue.Push(op, t)
 	case withdraw:
 		_, err := n.Clients[name].Withdraw(ctx, req)
 		if err != nil {
 			log.Fatalf("failed to request withdraw: %v", err)
 		}
+		//queue.Push(op, t)
 	case interest:
 		_, err := n.Clients[name].AddInterest(ctx, req)
 		if err != nil {
 			log.Fatalf("failed to request interest addition: %v", err)
 		}
+		//queue.Push(op, t)
 	default:
 		log.Fatalln("invalid operation:", op)
 	}
@@ -260,7 +268,7 @@ func (n *Node) sendRequestsToNode(name string) {
 	for scanner.Scan() {
 		operation := scanner.Text()
 		fmt.Println("sending request to node:", operation)
-		//n.sendRequestToNode(name, operation)
+		n.sendRequestToNode(name, operation)
 	}
 }
 
