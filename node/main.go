@@ -204,6 +204,7 @@ func (n *Node) sendRequestToNode(name, operation string) {
 
 	// Split current `line` into operation parameters
 	splitOperation := strings.Split(operation, " ")
+
 	if len(splitOperation) == 1 && splitOperation[0] == done {
 		t := clock.Tick(-1)
 		req := &bank.DoneRequest{Timestamp: t}
@@ -212,6 +213,7 @@ func (n *Node) sendRequestToNode(name, operation string) {
 		if err != nil {
 			log.Fatalf("failed to send request: %v", err)
 		}
+		return
 	}
 	if len(splitOperation) != 3 {
 		log.Fatalln("invalid input: expected [operation] [num1] [num2]")
