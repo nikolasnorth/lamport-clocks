@@ -381,7 +381,7 @@ func (n *Node) start() {
 	n.registerService()
 
 	for {
-		//time.Sleep(20 * time.Second)
+		time.Sleep(20 * time.Second)
 		n.checkForNewNodes()
 	}
 }
