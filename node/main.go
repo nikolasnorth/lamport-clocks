@@ -103,7 +103,6 @@ func NewMessageQueue() MessageQueue {
 func (q *MessageQueue) Push(op Operation, t Timestamp) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-
 }
 
 // Pop returns message, isEmpty. Removes and returns the message with the highest priority, with isEmpty set to false.
@@ -130,26 +129,35 @@ type BankServer struct {
 }
 
 func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Response, error) {
+	ts := req.GetTimestamp()
 	op := Operation{Name: deposit, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
-	t := clock.Tick(req.GetTimestamp().GetEvent())
-	//queue.Push(op, t)
-	fmt.Println("received deposit request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
+	updatedTs := Timestamp{node: ts.GetNode(), event: clock.Tick(ts.GetEvent())}
+	queue.Push(op, updatedTs)
+
+	fmt.Println("From Node:", ts.GetNode(), "event =", ts.GetEvent())
+
 	return &bank.Response{}, nil
 }
 
 func (b *BankServer) Withdraw(ctx context.Context, req *bank.Request) (*bank.Response, error) {
+	ts := req.GetTimestamp()
 	op := Operation{Name: withdraw, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
-	t := clock.Tick(req.GetTimestamp().GetEvent())
-	//queue.Push(op, t)
-	fmt.Println("received withdraw request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
+	updatedTs := Timestamp{node: ts.GetNode(), event: clock.Tick(ts.GetEvent())}
+	queue.Push(op, updatedTs)
+
+	fmt.Println("From Node:", ts.GetNode(), "event =", ts.GetEvent())
+
 	return &bank.Response{}, nil
 }
 
 func (b *BankServer) AddInterest(ctx context.Context, req *bank.Request) (*bank.Response, error) {
+	ts := req.GetTimestamp()
 	op := Operation{Name: interest, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
-	t := clock.Tick(req.GetTimestamp().GetEvent())
-	//queue.Push(op, t)
-	fmt.Println("received withdraw request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
+	updatedTs := Timestamp{node: ts.GetNode(), event: clock.Tick(ts.GetEvent())}
+	queue.Push(op, updatedTs)
+
+	fmt.Println("From Node:", ts.GetNode(), "event =", ts.GetEvent())
+
 	return &bank.Response{}, nil
 }
 
