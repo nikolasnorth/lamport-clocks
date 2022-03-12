@@ -39,18 +39,6 @@ type Account struct {
 	Balance   *float32 `json:"Balance"`
 }
 
-type Node struct {
-	Name    string
-	Addr    string
-	SDAddr  string
-	SDKV    api.KV
-	Clients map[string]bank.BankClient
-}
-
-type BankServer struct {
-	bank.UnimplementedBankServer
-}
-
 // Operation represents a bank operation to be performed.
 type Operation struct {
 	Name          string
@@ -58,17 +46,14 @@ type Operation struct {
 	AccountNumber int64
 }
 
-// Message contains a Lamport timestamp and a bank Operation.
-type message struct {
-	t  int64
-	op Operation
+type Timestamp struct {
+	node  int64
+	event int64
 }
 
-// MessageQueue is a thread-safe priority queue.
-type MessageQueue struct {
-	storage []message
-	mutex   sync.Mutex
-}
+// =====================================================================================================================
+// Lamport Clock
+// =====================================================================================================================
 
 type LamportClock struct {
 	LatestTime int64
@@ -93,17 +78,32 @@ func maxTime(t1, t2 int64) int64 {
 	return t1
 }
 
+// =====================================================================================================================
+// Message Priority Queue
+// =====================================================================================================================
+
+type Message struct {
+	t  Timestamp
+	op Operation
+}
+
+type MessageQueue struct {
+	storage []Message
+	mutex   sync.Mutex
+}
+
 // NewMessageQueue constructs a new empty queue.
 func NewMessageQueue() MessageQueue {
 	return MessageQueue{
-		storage: make([]message, 0),
+		storage: make([]Message, 0),
 	}
 }
 
 // Push inserts the given message in the correct order.
-func (q *MessageQueue) Push(op Operation, t int64) {
+func (q *MessageQueue) Push(op Operation, t Timestamp) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
+
 }
 
 // Pop returns message, isEmpty. Removes and returns the message with the highest priority, with isEmpty set to false.
@@ -121,9 +121,17 @@ func (q *MessageQueue) Pop() (Operation, bool) {
 	return op, false
 }
 
+// =====================================================================================================================
+// gRPC Bank Server
+// =====================================================================================================================
+
+type BankServer struct {
+	bank.UnimplementedBankServer
+}
+
 func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Response, error) {
 	op := Operation{Name: deposit, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
-	t := clock.Tick(req.GetTimestamp())
+	t := clock.Tick(req.GetTimestamp().GetEvent())
 	//queue.Push(op, t)
 	fmt.Println("received deposit request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
 	return &bank.Response{}, nil
@@ -131,7 +139,7 @@ func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Resp
 
 func (b *BankServer) Withdraw(ctx context.Context, req *bank.Request) (*bank.Response, error) {
 	op := Operation{Name: withdraw, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
-	t := clock.Tick(req.GetTimestamp())
+	t := clock.Tick(req.GetTimestamp().GetEvent())
 	//queue.Push(op, t)
 	fmt.Println("received withdraw request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
 	return &bank.Response{}, nil
@@ -139,7 +147,7 @@ func (b *BankServer) Withdraw(ctx context.Context, req *bank.Request) (*bank.Res
 
 func (b *BankServer) AddInterest(ctx context.Context, req *bank.Request) (*bank.Response, error) {
 	op := Operation{Name: interest, Amount: req.GetAmount(), AccountNumber: req.GetAccountNumber()}
-	t := clock.Tick(req.GetTimestamp())
+	t := clock.Tick(req.GetTimestamp().GetEvent())
 	//queue.Push(op, t)
 	fmt.Println("received withdraw request for", op.Amount, "to account", op.AccountNumber, ", t =", t)
 	return &bank.Response{}, nil
@@ -147,7 +155,7 @@ func (b *BankServer) AddInterest(ctx context.Context, req *bank.Request) (*bank.
 
 func (b *BankServer) Done(ctx context.Context, req *bank.DoneRequest) (*bank.Response, error) {
 	//op := Operation{Name: done, Amount: -1, AccountNumber: -1}
-	t := clock.Tick(req.GetTimestamp())
+	t := clock.Tick(req.GetTimestamp().GetEvent())
 
 	fmt.Println("received done request, t =", t)
 	//// Process initial account balances
@@ -198,6 +206,19 @@ func (b *BankServer) Done(ctx context.Context, req *bank.DoneRequest) (*bank.Res
 	return &bank.Response{}, nil
 }
 
+// =====================================================================================================================
+// Peer-to-peer Node
+// =====================================================================================================================
+
+type Node struct {
+	ID      int64
+	Name    string
+	Addr    string
+	SDAddr  string
+	SDKV    api.KV
+	Clients map[string]bank.BankClient
+}
+
 func (n *Node) sendRequestToNode(name, operation string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -206,8 +227,8 @@ func (n *Node) sendRequestToNode(name, operation string) {
 	splitOperation := strings.Split(operation, " ")
 
 	if len(splitOperation) == 1 && splitOperation[0] == done {
-		t := clock.Tick(-1)
-		req := &bank.DoneRequest{Timestamp: t}
+		ts := &bank.Timestamp{Node: n.ID, Event: clock.Tick(-1)}
+		req := &bank.DoneRequest{Timestamp: ts}
 
 		_, err := n.Clients[name].Done(ctx, req)
 		if err != nil {
@@ -231,9 +252,9 @@ func (n *Node) sendRequestToNode(name, operation string) {
 	}
 
 	// Send gRPC request to Node with given `name`
-	t := clock.Tick(-1)
 	op := Operation{Name: opName, Amount: float32(amount), AccountNumber: accountNumber}
-	req := &bank.Request{AccountNumber: accountNumber, Amount: float32(amount), Timestamp: t}
+	ts := &bank.Timestamp{Node: n.ID, Event: clock.Tick(-1)}
+	req := &bank.Request{AccountNumber: accountNumber, Amount: float32(amount), Timestamp: ts}
 	switch op.Name {
 	case deposit:
 		_, err := n.Clients[name].Deposit(ctx, req)
@@ -366,10 +387,21 @@ func main() {
 	addr := "localhost" + args[1]
 	sdAddr := args[2]
 
+	splitName := strings.Split(name, " ")
+	if len(splitName) != 2 {
+		log.Fatalln("expected node name: [name] [number]")
+	}
+
+	id, err := strconv.ParseInt(splitName[1], 10, 64)
+	if err != nil {
+		log.Fatalf("failed to convert node name number: %v", err)
+	}
+
 	queue = NewMessageQueue()
 	clock = NewLamportClock()
 
 	n := Node{
+		ID:      id,
 		Name:    name,
 		Addr:    addr,
 		SDAddr:  sdAddr,

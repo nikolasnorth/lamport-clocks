@@ -4,14 +4,19 @@ package bank;
 
 option go_package = "github.com/nikolasnorth/lamport-clocks;bank";
 
+message Timestamp {
+  int64 node = 1;
+  int64 event = 2;
+}
+
 message Request {
   float amount = 1;
   int64 accountNumber = 2;
-  int64 timestamp = 3;
+  Timestamp timestamp = 3;
 }
 
 message DoneRequest {
-  int64 timestamp = 1;
+  Timestamp timestamp = 1;
 }
 
 message Response {}
