@@ -7,6 +7,11 @@ option go_package = "github.com/nikolasnorth/lamport-clocks;bank";
 message Request {
   float amount = 1;
   int64 accountNumber = 2;
+  int64 timestamp = 3;
+}
+
+message DoneRequest {
+  int64 timestamp = 1;
 }
 
 message Response {}
@@ -15,4 +20,5 @@ service Bank {
   rpc Deposit(Request) returns (Response);
   rpc Withdraw(Request) returns (Response);
   rpc AddInterest(Request) returns (Response);
+  rpc Done(DoneRequest) returns (Response);
 }

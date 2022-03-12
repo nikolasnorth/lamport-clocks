@@ -25,6 +25,7 @@ type BankClient interface {
 	Deposit(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
 	Withdraw(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
 	AddInterest(ctx context.Context, in *Request, opts ...grpc.CallOption) (*Response, error)
+	Done(ctx context.Context, in *DoneRequest, opts ...grpc.CallOption) (*Response, error)
 }
 
 type bankClient struct {
@@ -62,6 +63,15 @@ func (c *bankClient) AddInterest(ctx context.Context, in *Request, opts ...grpc.
 	return out, nil
 }
 
+func (c *bankClient) Done(ctx context.Context, in *DoneRequest, opts ...grpc.CallOption) (*Response, error) {
+	out := new(Response)
+	err := c.cc.Invoke(ctx, "/bank.Bank/Done", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BankServer is the server API for Bank service.
 // All implementations must embed UnimplementedBankServer
 // for forward compatibility
@@ -69,6 +79,7 @@ type BankServer interface {
 	Deposit(context.Context, *Request) (*Response, error)
 	Withdraw(context.Context, *Request) (*Response, error)
 	AddInterest(context.Context, *Request) (*Response, error)
+	Done(context.Context, *DoneRequest) (*Response, error)
 	mustEmbedUnimplementedBankServer()
 }
 
@@ -84,6 +95,9 @@ func (UnimplementedBankServer) Withdraw(context.Context, *Request) (*Response, e
 }
 func (UnimplementedBankServer) AddInterest(context.Context, *Request) (*Response, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddInterest not implemented")
+}
+func (UnimplementedBankServer) Done(context.Context, *DoneRequest) (*Response, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Done not implemented")
 }
 func (UnimplementedBankServer) mustEmbedUnimplementedBankServer() {}
 
@@ -152,6 +166,24 @@ func _Bank_AddInterest_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Bank_Done_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DoneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BankServer).Done(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/bank.Bank/Done",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BankServer).Done(ctx, req.(*DoneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Bank_ServiceDesc is the grpc.ServiceDesc for Bank service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -170,6 +202,10 @@ var Bank_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddInterest",
 			Handler:    _Bank_AddInterest_Handler,
+		},
+		{
+			MethodName: "Done",
+			Handler:    _Bank_Done_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
