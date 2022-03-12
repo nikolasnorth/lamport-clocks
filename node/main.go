@@ -20,6 +20,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,6 +51,76 @@ type Node struct {
 
 type BankServer struct {
 	bank.UnimplementedBankServer
+}
+
+// Operation represents a bank operation to be performed.
+type Operation struct {
+	Name          string
+	Amount        float32
+	AccountNumber int64
+}
+
+// Message contains a Lamport timestamp and a bank Operation.
+type message struct {
+	t  int64
+	op Operation
+}
+
+// MessageQueue is a thread-safe priority queue.
+type MessageQueue struct {
+	storage []message
+	mutex   sync.Mutex
+}
+
+type LamportClock struct {
+	LatestTime int64
+}
+
+// NewLamportClock returns a new instance of LamportClock with time set to 0.
+func NewLamportClock() LamportClock {
+	return LamportClock{LatestTime: 0}
+}
+
+// Tick increments the latest time
+func (lc *LamportClock) Tick(requestTime int64) int64 {
+	lc.LatestTime = maxTime(lc.LatestTime, requestTime) + 1
+	return lc.LatestTime
+}
+
+// maxTime returns the max of the two given times.
+func maxTime(t1, t2 int64) int64 {
+	if t1 < t2 {
+		return t2
+	}
+	return t1
+}
+
+// NewMessageQueue constructs a new empty queue.
+func NewMessageQueue() MessageQueue {
+	return MessageQueue{
+		storage: make([]message, 0),
+	}
+}
+
+// Push inserts the given message in the correct order.
+func (q *MessageQueue) Push(op Operation, t int64) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+}
+
+// Pop returns message, isEmpty. Removes and returns the message with the highest priority, with isEmpty set to false.
+// Otherwise, if queue is empty, isEmpty is true.
+func (q *MessageQueue) Pop() (Operation, bool) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
+	if len(q.storage) == 0 {
+		return Operation{}, true
+	}
+
+	op := q.storage[0].op
+	q.storage = q.storage[1:]
+	return op, false
 }
 
 func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Response, error) {
