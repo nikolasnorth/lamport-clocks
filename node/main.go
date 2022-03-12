@@ -280,6 +280,7 @@ func (n *Node) connectToNode(name, addr string) {
 	defer conn.Close()
 
 	n.Clients[name] = bank.NewBankClient(conn)
+	n.sendRequestsToNode(name)
 }
 
 // Sends a message to all nodes at most once.
@@ -298,7 +299,6 @@ func (n *Node) checkForNewNodes() {
 			// New node was found, establish connection and send RPC requests for all operations
 			fmt.Println("found node: ", pair.Key)
 			n.connectToNode(pair.Key, string(pair.Value))
-			n.sendRequestsToNode(pair.Key)
 		}
 	}
 }
