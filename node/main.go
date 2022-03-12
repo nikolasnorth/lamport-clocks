@@ -194,94 +194,103 @@ func (b *BankServer) Done(ctx context.Context, req *bank.DoneRequest) (*bank.Res
 	return &bank.Response{}, nil
 }
 
-// Perform gRPC connections containing operations to be performed to all other nodes.
-func (n *Node) sendRequestsToNode(name, addr string) {
-	connection, err := grpc.Dial(addr, grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("failed to connect: %v", err)
+func (n *Node) sendRequestToNode(name, operation string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	// Split current `line` into operation parameters
+	splitOperation := strings.Split(operation, " ")
+	if len(splitOperation) == 1 && splitOperation[0] == done {
+		t := clock.Tick(-1)
+		req := &bank.DoneRequest{Timestamp: t}
+
+		_, err := n.Clients[name].Done(ctx, req)
+		if err != nil {
+			log.Fatalf("failed to send done request: %v", err)
+		}
 	}
-	defer connection.Close()
+	if len(splitOperation) != 3 {
+		log.Fatalln("invalid input: expected [operation] [num1] [num2]")
+	}
 
-	n.Clients[name] = bank.NewBankClient(connection)
+	// Parse operation parameters for current `line`
+	opName, accountNumberStr, amountStr := splitOperation[0], splitOperation[1], splitOperation[2]
+	accountNumber, err := strconv.ParseInt(accountNumberStr, 10, 64)
+	if err != nil {
+		log.Fatalf("failed to convert string to int64: %v", err)
+	}
+	amount, err := strconv.ParseFloat(amountStr, 32)
+	if err != nil {
+		log.Fatalf("failed to convert string to float: %v", err)
+	}
 
+	// Send gRPC request to Node with given `name`
+	req := &bank.Request{AccountNumber: accountNumber, Amount: float32(amount), Timestamp: clock.LatestTime}
+	op := Operation{Name: opName, Amount: float32(amount)}
+	switch op.Name {
+	case deposit:
+		_, err := n.Clients[name].Deposit(ctx, req)
+		if err != nil {
+			log.Fatalf("failed to request deposit: %v", err)
+		}
+	case withdraw:
+		_, err := n.Clients[name].Withdraw(ctx, req)
+		if err != nil {
+			log.Fatalf("failed to request withdraw: %v", err)
+		}
+	case interest:
+		_, err := n.Clients[name].AddInterest(ctx, req)
+		if err != nil {
+			log.Fatalf("failed to request interest addition: %v", err)
+		}
+	default:
+		log.Fatalln("invalid operation:", op)
+	}
+}
+
+func (n *Node) sendRequestsToNode(name string) {
 	operationsFile, err := os.Open(operationsFilename)
 	if err != nil {
 		log.Fatalf("failed to open file: %v", err)
 	}
 	defer operationsFile.Close()
 
+	// Make a separate RPC request for each operation in the input file
 	scanner := bufio.NewScanner(operationsFile)
 	for scanner.Scan() {
-		//
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-
-		line := scanner.Text()
-		splitLine := strings.Split(line, " ")
-		if len(splitLine) == 1 && splitLine[0] == done {
-			req := &bank.DoneRequest{}
-			_, err := n.Clients[name].Done(ctx, req)
-			if err != nil {
-				log.Fatalf("failed to send done request: %v", err)
-			}
-			break
-		}
-		if len(splitLine) != 3 {
-			log.Fatalln("invalid input: expected [operation] [num1] [num2]")
-		}
-
-		opName, accountNumberStr, amountStr := splitLine[0], splitLine[1], splitLine[2]
-		accountNumber, err := strconv.ParseInt(accountNumberStr, 10, 64)
-		if err != nil {
-			log.Fatalf("failed to convert string to int64: %v", err)
-		}
-		amount, err := strconv.ParseFloat(amountStr, 32)
-		if err != nil {
-			log.Fatalf("failed to convert string to float: %v", err)
-		}
-
-		req := &bank.Request{AccountNumber: accountNumber, Amount: float32(amount), Timestamp: clock.LatestTime}
-		op := Operation{Name: opName, Amount: float32(amount)}
-		switch op.Name {
-		case deposit:
-			_, err := n.Clients[name].Deposit(ctx, req)
-			if err != nil {
-				log.Fatalf("failed to request deposit: %v", err)
-			}
-		case withdraw:
-			_, err := n.Clients[name].Withdraw(ctx, req)
-			if err != nil {
-				log.Fatalf("failed to request withdraw: %v", err)
-			}
-		case interest:
-			_, err := n.Clients[name].AddInterest(ctx, req)
-			if err != nil {
-				log.Fatalf("failed to request interest addition: %v", err)
-			}
-		default:
-			log.Fatalln("invalid operation:", op)
-		}
-
-		cancel() // context
+		operation := scanner.Text()
+		fmt.Println("sending request to node:", operation)
+		//n.sendRequestToNode(name, operation)
 	}
 }
 
+func (n *Node) connectToNode(name, addr string) {
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	n.Clients[name] = bank.NewBankClient(conn)
+}
+
 // Sends a message to all nodes at most once.
-func (n *Node) messageAll() {
+func (n *Node) checkForNewNodes() {
 	kvPairs, _, err := n.SDKV.List("nnorth", nil)
 	if err != nil {
 		log.Fatalf("failed to retrieve list of all nodes: %v", err)
 	}
 
-	fmt.Println("KV Pairs:", kvPairs)
 	for _, pair := range kvPairs {
 		if pair.Key == n.Name {
+			// Itself
 			continue
 		}
 		if n.Clients[pair.Key] == nil {
-			// Found new node. Send requests from operations file
-			fmt.Println("new node found: ", pair.Key)
-			//n.sendRequestsToNode(pair.Key, string(pair.Value))
+			// New node was found, establish connection and send RPC requests for all operations
+			fmt.Println("found node: ", pair.Key)
+			n.connectToNode(pair.Key, string(pair.Value))
+			n.sendRequestsToNode(pair.Key)
 		}
 	}
 }
@@ -334,7 +343,7 @@ func (n *Node) start() {
 
 	for {
 		time.Sleep(20 * time.Second)
-		n.messageAll()
+		n.checkForNewNodes()
 	}
 }
 
