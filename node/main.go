@@ -53,7 +53,7 @@ type BankServer struct {
 }
 
 func (b *BankServer) Deposit(ctx context.Context, req *bank.Request) (*bank.Response, error) {
-	op := Operation{Name: deposit, Amount: req.Amount, From: req.}
+	op := Operation{Name: deposit, Amount: req.Amount}
 	t := clock.Tick(req.Timestamp)
 	queue.Push(op, t)
 	return &bank.Response{}, nil
@@ -191,7 +191,7 @@ func (n *Node) sendRequestsToNode(name, addr string) {
 			log.Fatalln("invalid operation:", op)
 		}
 
-		cancel()  // context
+		cancel() // context
 	}
 }
 
